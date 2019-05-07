@@ -1,0 +1,1021 @@
+1.a-  kubectl run
+
+kubectl get pods
+kubectl run first-deployment --image=nginx
+kubectl get pods
+(maybe one more time to show the state changed from container creation to Running)
+(copy the pod name from get pods)
+kubectl exec -it pod-name -- /bin/bash
+echo Hello nginx! > /usr/share/nginx/html/index.html
+apt-get update
+apt-get install curl
+curl localhost
+=======================
+
+1.c- kubectl create -f
+
+kubectl get pods
+nano declarative-pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: declarative-pod
+spec:
+  containers:
+  - name: memory-demo-ctr
+    image: nginx
+
+kubectl create -f declarative-pod.yaml
+(copy the pod name from get pods)
+kubectl exec -it memory-demo-ctr -- /bin/bash
+echo Hello nginx! We are so Declarative!-- > /usr/share/nginx/html/index.html
+apt-get update
+apt-get install curl
+curl localhost
+=======================
+
+1.d- kubectl apply -f
+
+kubectl get pods
+kubectl describe po declarative-pod
+nano declarative-pod.yaml
+(change the image from nginx to busybox)
+(save changes and exit)
+kubectl apply -f declarative-pod.yaml
+kubectl get pods
+kubectl describe (updated pod)
+==========================
+
+1.e- Pod - node matching
+
+kubectl get nodes 
+kubectl label nodes <nodename> disktype=ssd
+kubectl get nodes --show-labels
+nano dev-pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    env: test
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: IfNotPresent
+  nodeSelector:
+    disktype: ssd
+
+kubectl create -f dev-pod.yaml
+kubectl get pods -o wide
+==================================
+
+1.f-  Preset
+
+kubectl get pods
+kubectl get podpreset
+nano pod-preset.yaml
+
+apiVersion: settings.k8s.io/v1alpha1
+kind: PodPreset
+metadata:
+  name: allow-database
+spec:
+  selector:
+    matchLabels:
+      role: frontend
+  env:
+    - name: DB_PORT
+      value: "6379"
+  volumeMounts:
+    - mountPath: /cache
+      name: cache-volume
+  volumes:
+    - name: cache-volume
+      emptyDir: {}
+
+kubectl create -f pod-preset.yaml
+
+kubectl get podpreset
+
+nano website.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: website
+  labels:
+    app: website
+    role: frontend
+spec:
+  containers:
+    - name: website
+      image: nginx
+      ports:
+        - containerPort: 80
+
+kubectl create -f website.yaml
+kubectl get pods
+kubectl describe pod website
+=========================
+
+
+1.g-  Resource limits
+
+kubectl get pods
+nano resource-limited-pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+spec:
+  containers:
+  - name: db
+    image: mysql
+    env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: "password"
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+  - name: wp
+    image: wordpress
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+
+kubectl create -f resource-limited-pod.yaml
+
+kubectl get pods
+
+kubectl describe pods frontend
+=============================
+
+1.h- Pod initialization
+
+kubectl get pods
+nano init.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-demo
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: workdir
+      mountPath: /usr/share/nginx/html
+  # These containers are run during pod initialization
+  initContainers:
+  - name: install
+    image: busybox
+    command:
+    - wget
+    - "-O"
+    - "/work-dir/index.html"
+    - http://kubernetes.io
+    volumeMounts:
+    - name: workdir
+      mountPath: "/work-dir"
+  dnsPolicy: Default
+  volumes:
+  - name: workdir
+    emptyDir: {}
+
+kubectl create -f init.yaml
+
+kubectl get pods
+kubectl exec -it init-demo -- /bin/bash
+apt-get update
+apt-get install curl
+curl localhost
+=================================
+
+1.i-  Liveness and readiness probes
+
+kubectl get pods
+
+nano exec-liveness.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    test: liveness
+  name: liveness-exec
+spec:
+  containers:
+  - name: liveness
+    image: k8s.gcr.io/busybox
+    args:
+    - /bin/sh
+    - -c
+    - touch /tmp/healthy; sleep 30; rm -rf /tmp/healthy; sleep 600
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/healthy
+      initialDelaySeconds: 5
+      periodSeconds: 5
+
+kubectl create exec-liveness.yaml
+(wait 5 sec)
+kubectl describe pod liveness-exec
+(wait 30 sec)
+kubectl describe pod liveness-exec
+
+nano http-liveness.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    test: liveness
+  name: liveness-http
+spec:
+  containers:
+  - name: liveness
+    image: k8s.gcr.io/liveness
+    args:
+    - /server
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+        httpHeaders:
+        - name: X-Custom-Header
+          value: Awesome
+      initialDelaySeconds: 3
+      periodSeconds: 3
+
+kubectl create -f http-liveness.yaml
+(wait 30 sec)
+kubectl describe pod liveness-http
+
+nano tcp-liveness-readiness.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: goproxy
+  labels:
+    app: goproxy
+spec:
+  containers:
+  - name: goproxy
+    image: k8s.gcr.io/goproxy:0.1
+    ports:
+    - containerPort: 8080
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+
+kubectl create -f tcp-liveness-readiness.yaml
+(wait 20 sec)
+kubectl describe pod goproxy
+======================================
+
+1.j-  Container lifecycle events
+
+kubectl get pods
+nano lifecycle.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-demo
+spec:
+  containers:
+  - name: lifecycle-demo-container
+    image: nginx
+    lifecycle:
+      postStart:
+        exec:
+          command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
+      preStop:
+        exec:
+          command: ["/usr/sbin/nginx","-s","quit"]
+
+kubectl create -f lifecycle.yaml
+
+kubectl get pod lifecycle-demo
+kubectl exec -it lifecycle-demo -- /bin/bash
+cat /usr/share/message
+
+2.a- kubectl delete
+
+kubectl get pods
+kubectl delete pods --all
+kubectl get pods
+(copy podname)
+kubectl delete pod (copied podname)
+kubectl get pods
+
+
+
+2.b-  kubectl scale
+
+kubectl get pods
+kubectl get deployments
+(copy the name of deployment)
+kubectl scale deployments (deployment name) --replicas=3
+kubectl get pods
+
+2.c-  kubectl edit
+
+kubectl get deployments
+(copy the name of deployment)
+KUBE_EDITOR="nano" kubectl edit deployments (deployment name)
+add a label
+save the file
+
+3.a-  kubectl create rs
+
+kubectl get pods
+nano frontend.yaml
+
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: frontend
+  labels:
+    app: guestbook
+    tier: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      tier: frontend
+    matchExpressions:
+      - {key: tier, operator: In, values: [frontend]}
+  template:
+    metadata:
+      labels:
+        app: guestbook
+        tier: frontend
+    spec:
+      containers:
+      - name: php-redis
+        image: gcr.io/google_samples/gb-frontend:v3
+        ports:
+        - containerPort: 80
+
+kubectl create -f frontend.yaml
+kubectl get pods
+kubectl describe rs/frontend
+============================
+
+3.b-  delete rs and pods
+
+kubectl get pods
+kubectl get rs
+kubectl delete pods --all
+(wait a minute)
+kubectl get pods
+kubectl delete rs/frontend
+kubectl get pods
+==========================
+
+3.c-  delete rs but keep pods
+
+kubectl get pods
+kubectl create -f frontend.yaml
+kubectl delete rs/frontend --cascade=false
+kubectl get pods
+kubectl delete pods
+=========================
+
+3.d-  update labels on pod, so that new pod fired by replicaset
+
+kubectl get pods
+(copy the name of first pod)
+kubectl describe (first pod)
+KUBE_EDITOR="nano" kubectl edit pod (first pod)
+kubectl describe (first pod)
+kubectl get pods
+kubectl describe (new pod)
+==========================
+
+
+
+
+3.e-  scale replicaset
+
+kubectl get pods
+kubectl get rs
+nano frontend.yaml
+(change number of replicas from 3 to 5)
+kubectl apply -f frontend.yaml
+(wait a minute)
+kubectl get pods
+
+
+4.a-  create using kubectl run
+
+kubectl get pods
+kubectl run example --image=nginx
+kubectl get pods
+kubectl describe pod (pod name)
+kubectl describe deployment example
+kubectl get pods
+kubectl exec -it podname -- /bin/bash
+echo Hello nginx! > /usr/share/nginx/html/index.html
+apt-get update
+apt-get install curl
+curl localhost
+=====================
+
+4.b-  create -f
+kubectl get pods
+nano nginx-deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+
+kubectl create -f nginx-deployment.yaml
+kubectl get pods
+kubectl get deployments
+kubectl describe deployment nginx-deployment
+kubectl get pods
+(copy any of the latest pod)
+kubectl exec -it podname -- /bin/bash
+echo Hello nginx! > /usr/share/nginx/html/index.html
+apt-get update
+apt-get install curl
+curl localhost
+========================
+
+
+4.c-  apply -f
+kubectl get pods
+kubectl get deployments
+nano nginx-deployment.yaml
+(change number of replicas to 3)
+kubectl apply -f nginx-deployment.yaml
+kubectl get pods
+nano nginx-deployment.yaml
+(remove replica attribute)
+kubectl apply -f nginx-deployment.yaml
+kubectl get pods
+kubectl delete pods --all
+kubectl get pods
+============================
+4.d- rolling update
+
+kubectl get pods
+kubectl get deployments
+kubectl set image deployment/nginx-deployment nginx=nginx:1.9.1
+kubectl rollout status deployment/nginx-deployment
+kubectl get deployments
+kubectl get pods
+kubectl describe pods (podname)
+kubectl exec -it podname -- /bin/bash
+echo Hello nginx! > /usr/share/nginx/html/index.html
+apt-get update
+apt-get install curl
+curl localhost
+===========================
+
+4.e-  rolling back
+
+kubectl get pods
+kubectl get deployments -o wide
+(optional: kubectl describe deployments nginx-deployment)
+kubectl rollout undo deployment/nginx-deployment
+kubectl get deployments -o wide
+(optional: kubectl describe deployments nginx-deployment)
+===========================
+
+4.f-  scaling
+
+kubectl get pods
+kubectl get deployments
+kubectl scale deployments example --replicas=3
+kubectl get pods
+==========================
+
+4.g- pause/resume
+
+kubectl get deployments -o wide
+kubectl scale deployments nginx-deployment --replicas=10
+kubectl rollout status deployment/nginx-deployment
+kubectl set image deployment/nginx-deployment nginx=nginx:1.9.1
+kubectl rollout pause deployment/nginx-deployment
+kubectl rollout status deployment/nginx-deployment
+kubectl rollout resume deployment/nginx-deployment
+(after a while)
+kubectl rollout status deployment/nginx-deployment
+
+
+7.a- Run-to-completion job
+
+kubectl get pods
+nano job.yaml
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi
+spec:
+  template:
+    spec:
+      containers:
+      - name: pi
+        image: perl
+        command: ["perl",  "-Mbignum=bpi", "-wle", "print bpi(2000)"]
+      restartPolicy: Never
+  backoffLimit: 4
+
+kubectl create -f job.yaml
+
+kubectl describe jobs/pi
+pods=$(kubectl get pods  --show-all --selector=job-name=pi --output=jsonpath={.items..metadata.name})
+echo $pods
+kubectl logs $pods
+
+7.b-  Cronjob
+
+kubectl run hello --schedule="*/1 * * * *" --restart=OnFailure --image=busybox -- /bin/sh -c "date; echo Hello from the Kubernetes cluster"
+kubectl get cronjob hello (try again after a minute)
+
+pods=$(kubectl get pods -a --selector=job-name=jobname --output=jsonpath={.items..metadata.name})
+echo $pods
+kubectl logs $pods
+
+8.a-  regular volume
+
+kubectl get pods
+
+nano pod-redis.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis
+spec:
+  containers:
+  - name: redis
+    image: redis
+    volumeMounts:
+    - name: redis-storage
+      mountPath: /data/redis
+  volumes:
+  - name: redis-storage
+    emptyDir: {}
+
+kubectl create -f pod-redis.yaml
+kubectl get pod redis --watch
+kubectl exec -it redis -- /bin/bash
+cd /data/redis/
+echo Hello > test-file
+ps aux
+kill <pid>
+(exit if needed)
+kubectl get pod redis --watch
+kubectl exec -it redis -- /bin/bash
+ls /data/redis
+==================================
+
+8.b- persistent volume
+
+mkdir /mnt/data
+echo 'Hello from Kubernetes storage' > /mnt/data/index.html
+
+nano task-pv-volume.yaml
+
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: task-pv-volume
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data"
+
+kubectl create -f task-pv-volume.yaml
+kubectl get pv task-pv-volume
+
+nano task-pv-claim.yaml
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: task-pv-claim
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+
+kubectl create -f task-pv-claim
+
+kubectl get pv task-pv-volume
+kubectl get pvc task-pv-claim
+
+nano task-pv-pod.yaml
+
+kind: Pod
+apiVersion: v1
+metadata:
+  name: task-pv-pod
+spec:
+  volumes:
+    - name: task-pv-storage
+      persistentVolumeClaim:
+       claimName: task-pv-claim
+  containers:
+    - name: task-pv-container
+      image: nginx
+      ports:
+        - containerPort: 80
+          name: "http-server"
+      volumeMounts:
+        - mountPath: "/usr/share/nginx/html"
+          name: task-pv-storage
+
+kubectl create -f task-pv-pod.yaml
+
+kubectl exec -it task-pv-pod -- /bin/bash
+apt-get update
+apt-get install curl
+curl localhost
+=====================================
+
+8.c- secret
+
+echo -n 'my-app' | base64
+echo -n '39528$vdg7Jb' | base64
+
+nano secret.yaml
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+data:
+  username: bXktYXBw
+  password: Mzk1MjgkdmRnN0pi
+
+kubectl create -f secret.yaml
+kubectl get secret test-secret
+kubectl describe secret test-secret
+
+nano secet-pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secret-test-pod
+spec:
+  containers:
+    - name: test-container
+      image: nginx
+      volumeMounts:
+          # name must match the volume name below
+          - name: secret-volume
+            mountPath: /etc/secret-volume
+  # The secret data is exposed to Containers in the Pod through a Volume.
+  volumes:
+    - name: secret-volume
+      secret:
+        secretName: test-secret
+
+kubectl create -f secret-pod.yaml
+
+kubectl get pod secret-test-pod
+kubectl exec -it secret-test-pod -- /bin/bash
+cd /etc/secret-volume
+ls
+cat username; echo; cat password; echo
+===================================
+
+8.d- configmap
+
+nano configmap.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: special-config
+  namespace: default
+data:
+  special.level: very
+  special.type: charm
+
+nano config-pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dapi-test-pod
+spec:
+  containers:
+    - name: test-container
+      image: k8s.gcr.io/busybox
+      command: [ "/bin/sh", "-c", "env" ]
+      envFrom:
+      - configMapRef:
+          name: special-config
+  restartPolicy: Never
+
+
+kubectl get pods
+kubectl exec -it podname -- /bin/bash
+"ls /etc/config/"
+
+
+11.a- Environment variables
+
+kubectl get pods
+
+nano envars.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: envar-demo
+  labels:
+    purpose: demonstrate-envars
+spec:
+  containers:
+  - name: envar-demo-container
+    image: gcr.io/google-samples/node-hello:1.0
+    env:
+    - name: DEMO_GREETING
+      value: "Hello from the environment"
+    - name: DEMO_FAREWELL
+      value: "Such a sweet sorrow"
+
+kubectl create -f envars.yaml
+kubectl get pods -l purpose=demonstrate-envars
+kubectl exec -it envar-demo -- /bin/bash
+printenv
+============================
+
+11.b- Share information using files
+
+kubectl get pods
+
+nano dapi-volume.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubernetes-downwardapi-volume-example
+  labels:
+    zone: us-est-coast
+    cluster: test-cluster1
+    rack: rack-22
+  annotations:
+    build: two
+    builder: john-doe
+spec:
+  containers:
+    - name: client-container
+      image: k8s.gcr.io/busybox
+      command: ["sh", "-c"]
+      args:
+      - while true; do
+          if [[ -e /etc/podinfo/labels ]]; then
+            echo -en '\n\n'; cat /etc/podinfo/labels; fi;
+          if [[ -e /etc/podinfo/annotations ]]; then
+            echo -en '\n\n'; cat /etc/podinfo/annotations; fi;
+          sleep 5;
+        done;
+      volumeMounts:
+        - name: podinfo
+          mountPath: /etc/podinfo
+          readOnly: false
+  volumes:
+    - name: podinfo
+      downwardAPI:
+        items:
+          - path: "labels"
+            fieldRef:
+              fieldPath: metadata.labels
+          - path: "annotations"
+            fieldRef:
+              fieldPath: metadata.annotations
+
+kubectl create -f dapi-volume.yaml
+kubectl get pods
+kubectl logs kubernetes-downwardapi-volume-example
+kubectl exec -it kubernetes-downwardapi-volume-example -- sh
+cat /etc/podinfo/labels
+cat /etc/podinfo/annotations
+ls -laR /etc/podinfo
+exit
+
+
+12.c- Loadbalancer
+
+kubectl get pods
+kubectl run hello-world --replicas=2 --labels="run=load-balancer-example" --image=gcr.io/google-samples/node-hello:1.0  --port=8080
+kubectl get pods
+kubectl expose deployment <your-deployment> --type="LoadBalancer" --name="example-service"
+kubectl get services
+kubectl get services example-service --watch
+curl <your-external-ip-address>:8080
+===================================
+
+12.d-  kubectl port-forward
+
+kubectl get pods
+kubectl create -f https://k8s.io/docs/tasks/access-application-cluster/redis-master.yaml
+kubectl get pods
+kubectl get pods redis-master --template='{{(index (index .spec.containers 0).ports 0).containerPort}}{{"\n"}}'
+kubectl port-forward redis-master 6379:6379
+redis-cli
+127.0.0.1:6379>ping
+
+============================================
+M3D4- Scheduling pods using taints
+
+kubectl get nodes
+kubectl taint nodes (nodename) env=dev:NoSchedule
+kubectl run nginx —image=nginx
+kubectl label deployments/nginx env=dev
+kubectl scale deployments/nginx —replicas=5
+kubectl get pods -o wide
+============================================
+m3D5- Tolerations
+
+kubectl get nodes
+kubectl taint nodes (nodename) env=dev:NoSchedule
+kubectl describe nodes (nodename)
+nano dep.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 7
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+      tolerations:
+      - key: “dev”
+        operator: “Equal”
+        value: “env”
+        effect: “NoSchedule”
+    
+
+    
+
+kubectl get pods -o wide
+
+M3D16- Volumes Demo
+
+gcloud compute disks list
+nano volume-sample.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pd
+spec:
+  containers:
+  - image: k8s.gcr.io/test-webserver
+    name: test-container
+    volumeMounts:
+    - mountPath: /test-pd
+      name: test-volume
+  volumes:
+  - name: test-volume
+    gcePersistentDisk: (diskname)
+      pdName:
+      fsType: ext4
+
+kubectl create -f vlume-sample.yaml
+kubectl describe po test-pd
+
+========================================
+ M4d4- Stateful Sets deployment order Demo
+
+nano Sts.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None
+  selector:
+    app: nginx
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: "nginx"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: k8s.gcr.io/nginx-slim:0.8
+        ports:
+        - containerPort: 80
+          name: web
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+  - metadata:
+      name: www
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+kubectl apply -f Sts.yaml
+kubectl get pods -w -l app=nginx
+kubectl scale Sts web —replicas=4
+kubectl get pods -w -l app=nginx
+
+=======================================
+Accessing secrets Demo
+
+kubectl get secrets
+kubectl describe secrets/sensitive
+kano secret-pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata
+  name: secret-pod
