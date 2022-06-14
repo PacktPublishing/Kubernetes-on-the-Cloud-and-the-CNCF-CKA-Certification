@@ -1,7 +1,3 @@
-## [Get this title for $10 on Packt's Spring Sale](https://www.packt.com/V11588?utm_source=github&utm_medium=packt-github-repo&utm_campaign=spring_10_dollar_2022)
------
-For a limited period, all eBooks and Videos are only $10. All the practical content you need \- by developers, for developers
-
 # Kubernetes on the Cloud and the CNCF CKA Certification [Video]
 This is the code repository for [Kubernetes on the Cloud and the CNCF CKA Certification [Video]](https://www.packtpub.com/networking-and-servers/ms-100-exam-managing-office-365-identities-and-requirements-video?utm_source=github&utm_medium=repository&utm_campaign=9781838641306), published by [Packt](https://www.packtpub.com/?utm_source=github). It contains all the supporting project files necessary to work through the video course from start to finish.
 ## About the Video Course
